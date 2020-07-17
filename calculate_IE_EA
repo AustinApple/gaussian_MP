@@ -1,0 +1,64 @@
+#!/bin/bash
+if [ -f "result.csv" ]
+then
+    rm result.csv
+fi
+
+echo task_id,IE,EA >> result.csv
+
+for f1 in {0..99} 
+do
+cd $f1
+
+DFT_neg=`tail -1 neg/${f1}_neg_DFT.log | awk '{print $1}'| cut -c1`
+DFT_pos=`tail -1 pos/${f1}_pos_DFT.log | awk '{print $1}'| cut -c1`
+DFT_neu=`tail -1 neu/${f1}_neu_DFT.log | awk '{print $1}'| cut -c1`
+
+if [ -f "neu/${f1}_neu_solvent.log" ]
+then
+    solvent_neu=`tail -1 neu/${f1}_neu_solvent.log | awk '{print $1}'| cut -c1`
+    if [[ "$DFT_neu" == "N" && "$solvent_neu" == "N" ]]
+    then
+        E_neu=`grep HF neu/${f1}_neu_solvent.log | head -1 | awk '{print $5}'`
+        if [ -f "pos/${f1}_pos_solvent.log" ]
+        then
+            solvent_pos=`tail -1 pos/${f1}_pos_solvent.log | awk '{print $1}'| cut -c1`
+            if [[ "$DFT_pos" == "N" && "$solvent_pos" == "N" ]]
+            then
+                E_pos=`grep HF pos/${f1}_pos_solvent.log | head -1 | awk '{print $5}'`
+                IE=`echo $E_pos $E_neu | awk '{print ($1-$2)*27.21}'`
+            fi
+        else 
+            IE='NaN'
+        fi
+    fi 
+else
+    IE='NaN'
+fi 
+
+
+if [ -f "neu/${f1}_neu_solvent.log" ]
+then
+    solvent_neu=`tail -1 neu/${f1}_neu_solvent.log | awk '{print $1}'| cut -c1`
+    if [[ "$DFT_neu" == "N" && "$solvent_neu" == "N" ]]
+    then
+        E_neu=`grep HF neu/${f1}_neu_solvent.log | head -1 | awk '{print $5}'`
+        if [ -f "neg/${f1}_neg_solvent.log" ]
+        then
+            solvent_neg=`tail -1 neg/${f1}_neg_solvent.log | awk '{print $1}'| cut -c1`
+            if [[ "$DFT_neg" == "N" && "$solvent_neg" == "N" ]]
+            then
+                E_neg=`grep HF neg/${f1}_neg_solvent.log | head -1 | awk '{print $5}'`
+                EA=`echo $E_neu $E_neg | awk '{print ($1-$2)*27.21}'`
+            fi
+        else 
+            EA='NaN'
+        fi
+    fi 
+else
+    EA='NaN'
+fi
+
+cd ../
+echo -e $f1,$IE,$EA >>result.csv
+done

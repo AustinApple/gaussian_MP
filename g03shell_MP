@@ -1,0 +1,287 @@
+#!/bin/bash
+f1=$1 
+cat > g03sub.sh <<!
+#!/bin/bash
+#PBS -l nodes=1:ppn=10
+#PBS -N $f1
+
+#--------------------------- function of running gaussian  ---------------------------
+# argument \$1 
+run()
+{   
+    cd \$PBS_O_WORKDIR
+    g03scr=\$1
+    g03exec=g03l
+    threads=2
+    source /opt/intel/bin/compilervars.sh intel64
+    #  Setting OMP threads
+    export OMP_NUM_THREADS=\$threads
+    HOSTS=\`cat \$PBS_NODEFILE | uniq \`
+    HOSTS1=\`head -1 \$PBS_NODEFILE \`
+    USERNAME=\`whoami\`
+    ###TMP_DIR=/scratch/gaussian/tmp/\$USERNAME/\$HOSTS1-\$PBS_JOBID
+    TMP_DIR=/tmp/\$USERNAME/\$HOSTS1-\$PBS_JOBID
+    bashtrap()
+    {
+    if [ -d \$TMP_DIR ] ; then
+        /bin/rm -rf \$TMP_DIR;
+    fi
+    exit -1;
+    }
+    if [ ! -d \$TMP_DIR ] ;then
+    mkdir -p \$TMP_DIR
+    fi
+		
+    g03root="/opt/gaussian"
+    GAUSS_LFLAGS="-nodelist \"\$HOSTS\" -mp 1 "
+    ###GAUSS_SCRDIR="/scratch/gaussian/tmp"
+    GAUSS_SCRDIR="\$TMP_DIR"
+    export g03root GAUSS_SCRDIR GAUSS_LFLAGS	
+	
+    . /opt/gaussian/g03/bsd/g03.profile
+
+    export LD_LIBRARY_PATH=/opt/gaussian/g03:\$LD_LIBRARY_PATH
+    trap bashtrap 2 3 11 15
+    echo "Your job begin in \`hostname\` !"
+    echo "Your job compute in \$HOSTS !"
+    time \$g03exec \$g03scr
+    rm -rf \$TMP_DIR
+}
+#-----------------------------------------------------------------------------
+
+
+# argument $1, $2 : $1 is the log file, $2 is the original file
+debug()
+{
+    
+    a=\`tail -1 \${1}.log | awk '{print \$1}'| cut -c1\`    # detect whether Normal termination (N/F)
+    echo "--- DEBUGGING ---">>OUTPUT
+    # DO UNTIL "a" become "N" 
+    n=0
+    until [ "\$a" == "N" ]
+    do 
+        #output in .log
+        a=\`tail -1 \${1}.log | awk '{print \$1}'| cut -c1\`    # N/F
+        b=\`tail -3 \${1}.log | awk '{print \$6}'| cut -c20-22\`    # 999/301/502....
+        b1=\`tail -3 \${1}.log | awk '{print \$6}'| cut -c30-32\`    # linda
+        c=\`tail -4 \${1}.log | head -n 1\`     # Error message1
+        d=\`tail -3 \${1}.log | head -n 1 | awk '{print \$6}'\`     # Error message2
+        e=\`tail -4 \${1}.log | head -n 1 | awk '{print \$8}'\`     # electrons problem
+    
+        #Judge if there is error existed 
+        if [ "\$a" == "F" ]
+        then
+            # ERROR Linda.exe
+            if  [ "\$b" == "ind" ]
+            then
+                echo " Linda.exe error message ">>OUTPUT
+                if [ "\$b1" == "502" ]
+                then
+                    echo " Your error is : l502 ">>OUTPUT
+                    echo " error message : \$c ">>OUTPUT
+                    obabel -ilog \${1}.log -ocom -O \${1}_relax_pos.com
+                    if [ -f "$\{1}.com" ]
+                    then
+                        rm \${1}.com
+                    fi
+                    convert \$2 \${1}_relax_pos.com \${1}.com
+                    rm \${1}_relax_pos.com
+                    run \${1}.com
+                else
+                    echo echo "OTHER ERROR !!">>OUTPUT
+                    echo "\$d">>OUTPUT
+                    echo "\$c">>OUTPUT
+                    break
+                fi
+        
+            # ERROR L9999
+            elif  [ "\$b" == "999" ]
+            then 	  
+                echo " Your error is : l9999 ">>OUTPUT
+                echo " error message : \$c ">>OUTPUT
+                obabel -ilog \${1}.log -ocom -O \${1}_relax_pos.com
+                if [ -f "\${1}.com" ]
+                then
+                    rm \${1}.com
+                fi
+                convert \$2 \${1}_relax_pos.com \${1}.com
+                rm \${1}_relax_pos.com
+                run \${1}.com
+
+            # ERROR L301
+            elif  [ "\$b" == "301" ]   
+            then
+                echo " Your error is : l301 ">>OUTPUT
+                echo " error message : \$c ">>OUTPUT
+                if [ "\$e" == "electrons"]
+                then
+                    echo "Plz also check your molecule if there is any structural problem.">>OUTPUT
+                    echo "if 'YES'. Reproduce the molecule and calculate again">>OUTPUT
+                    echo "if 'NO'. You've gotten the spin multiplicity problem. (1:singlet state/ 2:doublet state/ 3:triplet state....)">>OUTPUT
+                    break
+                else  
+                    echo "l301: PROCEEDING ">>OUTPUT  
+                    obabel -ilog \${1}.log -ocom -O \${1}_relax_pos.com
+                    if [ -f "\${1}.com" ]
+                    then
+                        rm \${1}.com
+                    fi
+                    convert \$2 \${1}_relax_pos.com \${1}.com
+                    rm \${1}_relax_pos.com
+                    run \${1}.com
+                fi
+            # ERROR L502
+            elif  [ "\$b" == "502" ]   
+            then
+                echo " Your error is : l502 ">>OUTPUT
+                echo " error message : \$c ">>OUTPUT
+                echo "L502: PROCEEDING ">>OUTPUT
+                obabel -ilog \${1}.log -ocom -O \${1}_relax_pos.com
+                if [ -f "\${1}.com" ]
+                then
+                    rm \${1}.com
+                fi
+                convert \$2 \${1}_relax_pos.com \${1}.com
+                rm \${1}_relax_pos.com
+                run \${1}.com
+            
+            # ERROR L103
+            elif  [ "\$b" == "103" ]   
+            then
+                echo " Your error is : l103 ">>OUTPUT
+                echo " error message : \$c ">>OUTPUT
+                echo "l103: PROCEEDING ">>OUTPUT 
+                obabel -ilog \${1}.log -ocom -O \${1}_relax_pos.com
+                if [ -f "\${1}.com" ]
+                then
+                    rm \${1}.com
+                fi
+                convert \$2 \${1}_relax_pos.com \${1}.com
+                rm \${1}_relax_pos.com
+                run \${1}.com
+
+            # ERROR L1
+            elif  [ "\$b" == "1.e" ]
+            then
+                echo " SYNTAX error detected !!">>OUTPUT
+                echo " Your error is : l1 ">>OUTPUT
+                echo " error message : \$d ">>OUTPUT
+                break 
+            # OTHER ERROR
+            else
+                echo "OTHER ERROR !!">>OUTPUT
+                echo "\$d">>OUTPUT
+                echo "\$c">>OUTPUT
+                break
+            fi
+        else
+            echo "Something wrong happened.">>OUTPUT
+            echo "Please check the log file.">>OUTPUT
+            break
+        fi
+
+
+        #counter
+        n=\$((n+1))
+        cp \${1}.log \${1}_\$n.log 
+        cp \${1}.com \${1}_\$n.com 
+        a=\`tail -1 \${1}.log | awk '{print \$1}'| cut -c1\` 
+        #DO until 5 loops
+        if [ \$n -eq 5 ]
+        then
+            echo "OPT has been executed for 5 times">>OUTPUT
+            echo "Program stop execution">>OUTPUT
+            break
+        fi
+    done
+    
+    if [ "\$a" == "N" ]
+    then
+        echo "ENDED NORMAL">>OUTPUT
+        echo "the opt is successful">>OUTPUT
+    fi
+        echo "--- END debugging ---">>OUTPUT
+}
+#=========================== main() ===================================
+
+#--------------------------- AM1 CALCULATION ---------------------------------
+cd \$PBS_O_WORKDIR
+rm ${f1}_* ${f1}.e* ${f1}.o* OUTPUT
+cp ${f1}.com ${f1}_ori.com
+
+#-->"AM1"-->DFT	
+echo "---INITIAL CALCULATION---">>OUTPUT
+echo "--->'AM1'-->DFT---">>OUTPUT
+convert2AM1 ${f1}_ori.com ${f1}_AM1.com    # need to make convert2AM1 executable
+run ${f1}_AM1.com
+
+#------------------------- DFT calculation -----------------------------
+echo "--->AM1-->'DFT'---">>OUTPUT
+obabel -ilog ${f1}_AM1.log -ocom -O ${f1}_AM1_relax_pos.com
+convert ${f1}_ori.com ${f1}_AM1_relax_pos.com ${f1}_DFT.com  # need to make convert2AM1 executable
+
+rm ${f1}_AM1_relax_pos.com
+run ${f1}_DFT.com
+#---------------------------start debugging -----------------------
+
+debug ${f1}_DFT ${f1}_ori.com
+
+#------------Check imaginary frequencies, if so, run opt=tight ---------
+#--------------------------- frequency check ---------------------------
+frequency=\`grep Frequencies ${f1}_DFT.log | head -1 | awk {'print \$3'}\`
+if [ \$frequency \< 0 ]
+then
+    echo "There is imaginary frequency.">>OUTPUT
+    echo "try to increase convergence criteria and set opt=tight ">>OUTPUT
+    obabel -ilog ${f1}_DFT.log -ocom -O ${f1}_DFT_relax_pos.com
+    convert ${f1}_ori.com ${f1}_DFT_relax_pos.com ${f1}_DFT_tight.com
+    sed -i s/Opt/Opt=tight/g ${f1}_DFT_tight.com    # set Opt=tight
+    run ${f1}_DFT_tight.com
+    rm ${f1}_DFT_relax_pos.com
+    debug ${f1}_DFT_tight ${f1}_ori.com
+    
+    frequency_tight=\`grep Frequencies ${f1}_DFT_tight.log | head -1 | awk {'print \$3'}\`
+    if [ \$frequency_tight \> 0 ]
+    then
+        echo "Frequency check. There is no imaginary frequency.">>OUTPUT
+        
+    else 
+        echo "Frequency check. There is still imaginary frequency." >>OUTPUT
+    fi
+else
+    echo "Frequency check. There is no imaginary frequency.">>OUTPUT
+fi
+
+#--------------------------- single point solvent calculation  ---------------------------
+if [ \$frequency \> 0 ] || [ \$frequency_tight \> 0 ]
+then
+    echo "Now start to single point solvent calculation" >>OUTPUT
+    if [ -f "${f1}_solvent.com" ]
+    then
+    rm ${f1}_solvent.com
+    fi
+    
+    if [ -f "${f1}_DFT_tight.com" ]
+    then
+        obabel -ilog ${f1}_DFT_tight.log -ocom -O ${f1}_DFT_relax_pos.com
+    else
+        obabel -ilog ${f1}_DFT.log -ocom -O ${f1}_DFT_relax_pos.com
+    fi
+    
+    convert ${f1}_ori.com ${f1}_DFT_relax_pos.com ${f1}_solvent_temp.com
+    convert2solvent ${f1}_solvent_temp.com ${f1}_solvent.com
+    rm ${f1}_solvent_temp.com
+    rm ${f1}_DFT_relax_pos.com
+    run ${f1}_solvent.com
+    
+    a=\`tail -1 ${f1}_solvent.log | awk '{print \$1}'| cut -c1\`
+    if [ "\$a" == "N" ]
+    then
+        echo "single point solvent calculation succeed." >>OUTPUT
+    else
+        echo "single point solvent calculation has some problems @@">>OUTPUT
+    fi
+else 
+    echo "imaginary frequency still exists, so the subseqent calculation will not be performed">>OUTPUT
+fi 
+!

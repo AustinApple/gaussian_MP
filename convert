@@ -1,0 +1,51 @@
+#! /bin/sh
+
+ori_com=$1  # .com file including all the setting parameter
+relax_pos=$2 # new position after relaxation
+new_com=$3  # .com output file
+
+n=0
+while IFS= read -r line
+do      
+        char_1st=`echo $line | awk '{print $1}'`
+# environment setting
+        if [[ $n -eq 0 && "$char_1st" != "#" ]]
+        then
+            echo $line >> $new_com
+# calculation parameter	
+        elif [[ "$char_1st" = "#" && $n -eq 0 ]]
+        then 
+            echo $line >> $new_com
+	    n=$((n+1))
+# title section and Molecule specification
+        elif [[ $n -gt 0 && $n -lt 5 ]]
+        then
+	    echo $line >> $new_com
+            n=$((n+1))
+# molecular position read from another .com file 
+        elif [[ $n -eq 5 ]]
+        then 
+            sed -n '6,$p' $relax_pos | 
+            while IFS= read -r line_pos
+            do
+            if [[ $line_pos = "" ]]
+            then
+                break 
+            else   
+                echo $line_pos >> $new_com
+            fi  
+            done
+            n=$((n+1))
+# add another original tags
+        elif [[ $n -eq 6 && $line = "" ]]
+        then 
+            echo ""  >> $new_com
+            n=$((n+1))
+        elif [[ $n -eq 7 && $line != "" ]]
+        then
+            echo $line >> $new_com
+        fi 
+done < $ori_com
+# insert new line
+#echo -e "\n\n" >> $new_com
+

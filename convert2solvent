@@ -1,0 +1,46 @@
+#! /bin/sh
+
+ori_com=$1  # .com file including all the setting parameter
+new_com=$2  # .com output file
+
+if [ -f "$new_com" ]
+then
+    rm $new_com
+fi
+
+n=0
+while IFS= read -r line
+do      
+        char_1st=`echo $line | awk '{print $1}'`
+# environment setting
+        if [[ $n -eq 0 && "$char_1st" != "#" ]]
+        then
+            echo $line >> $new_com
+# calculation parameter	
+        elif [[ "$char_1st" = "#" && $n -eq 0 ]]
+        then 
+            echo "# Sp B3LYP/6-31+G* scrf=(read)" >> $new_com
+	    n=$((n+1))
+# title section and Molecule specification
+        elif [[ $n -gt 0 && $n -lt 5 ]]
+        then
+	    echo $line >> $new_com
+            n=$((n+1))
+# molecular position read from another .com file 
+        elif [[ $n -eq 5 ]]
+        then 
+            echo $line >> $new_com
+            
+# add another original tags
+        elif [[ $n -eq 5 && $line = "" ]]
+        then 
+            echo ""  >> $new_com
+            n=$((n+1))
+        elif [[ $n -eq 6 && $line != "" ]]
+        then
+            echo $line >> $new_com
+        fi 
+done < $ori_com
+# insert new line
+echo -e "eps=78.3553\n\n" >> $new_com
+
